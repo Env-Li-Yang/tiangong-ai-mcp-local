@@ -1,0 +1,40 @@
+{
+  "name": "@tiangong-ai/mcp-server-local",
+  "version": "0.0.13",
+  "description": "TianGong AI MCP Local Server",
+  "license": "MIT",
+  "author": "Nan LI",
+  "type": "module",
+  "bin": {
+    "tiangong-ai-mcp-stdio": "dist/src/index.js",
+    "tiangong-ai-mcp-http": "dist/src/index_server.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc && shx chmod +x dist/src/*.js",
+    "start": "npm run build && npx dotenv -e .env -- npx @modelcontextprotocol/inspector node dist/src/index.js",
+    "start:server": "npm run build && concurrently \"npx dotenv -e .env -- node dist/src/index_server.js\" \"npx @modelcontextprotocol/inspector\"",
+    "lint": "prettier -c --write \"**/**.{js,jsx,tsx,ts,less,md,json}\""
+  },
+  "dependencies": {
+    "@types/express": "^5.0.3",
+    "@langchain/langgraph": "^0.3.5",
+    "@modelcontextprotocol/sdk": "^1.13.2",
+    "weaviate-client": "^3.6.2",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/inspector": "^0.15.0",
+    "dotenv-cli": "^8.0.0",
+    "prettier": "^3.5.3",
+    "prettier-plugin-organize-imports": "^4.1.0",
+    "shx": "^0.4.0",
+    "supergateway": "^3.2.0",
+    "typescript": "^5.8.3"
+  }
+}

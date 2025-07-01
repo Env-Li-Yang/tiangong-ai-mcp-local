@@ -1,0 +1,24 @@
+curl -N -X POST http://localhost:9277/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "Search_ESG_Tool",
+    "params": {
+      "your_parameters": "here"
+    },
+    "id": "1"
+  }'
+
+###
+  curl -N -X POST http://192.168.1.108:9277/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "Search_ESG_Tool",
+    "params": {
+      "your_parameters": "here"
+    },
+    "id": "1"
+  }'
