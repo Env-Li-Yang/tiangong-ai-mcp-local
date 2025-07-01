@@ -1,8 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { regElleAgent } from '../agents/elle.js';
-import { regEduTool } from '../tools/edu.js';
-import { regESGTool } from '../tools/esg.js';
-import { regSciTool } from '../tools/sci.js';
 import { regWeaviateTool } from '../tools/weaviate.js';
 
 export function initializeServer(): McpServer {
@@ -12,9 +9,6 @@ export function initializeServer(): McpServer {
   });
 
   regWeaviateTool(server);
-  regESGTool(server);
-  regSciTool(server);
-  regEduTool(server);
   regElleAgent(server);
 
   return server;
