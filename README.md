@@ -1,8 +1,8 @@
 # TianGong-AI-MCP
 
-[中文](https://github.com/linancn/tiangong-ai-mcp/blob/main/README_CN.md) | [English](https://github.com/linancn/tiangong-ai-mcp/blob/main/README.md)
+[中文](https://github.com/linancn/tiangong-ai-mcp-local/blob/main/README_CN.md) | [English](https://github.com/linancn/tiangong-ai-mcp-local/blob/main/README.md)
 
-TianGong AI Model Context Protocol (MCP) Server supports both STDIO, SSE and Streamable Http protocols.
+TianGong AI Model Context Protocol (MCP) Local Server supports Streamable Http protocol.
 
 ## Starting MCP Server
 
@@ -30,51 +30,4 @@ docker run -d \
     --publish 9279:9279 \
     --env-file .env \
     linancn/tiangong-ai-mcp-server-local:0.0.1
-```
-
-## Development
-
-### Environment Setup
-
-```bash
-# Install Node.js
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
-nvm install 22
-nvm use
-
-# Install dependencies
-npm install
-
-# Update dependencies
-npm update && npm ci
-```
-
-### Code Formatting
-
-```bash
-# Format code using the linter
-npm run lint
-```
-
-### Local Testing
-
-#### Streamable Http Server
-
-```bash
-# Launch the Streamable Http Server using MCP Inspector
-npm start:server
-```
-
-#### Launch MCP Inspector
-
-```bash
-npx @modelcontextprotocol/inspector
-```
-
-### Publishing
-
-```bash
-npm login
-
-npm run build && npm publish
 ```
