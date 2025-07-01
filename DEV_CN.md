@@ -30,11 +30,11 @@ npm run lint
 
 ### 本地测试
 
-#### STDIO 服务器
+#### Streamable Http 服务器
 
 ```bash
-# 使用 MCP Inspector 启动 STDIO 服务器
-npm run start
+# 使用 MCP Inspector 启动 Streamable Http 服务器
+npm run start:server
 ```
 
 #### 启动 MCP Inspector
@@ -43,10 +43,20 @@ npm run start
 npx @modelcontextprotocol/inspector
 ```
 
-### 发布
+### 发布 NPM 包
 
 ```bash
 npm login
 
 npm run build && npm publish
+```
+
+### 发布 Docker 镜像
+
+```bash
+# 使用 Dockerfile 构建 MCP 服务器镜像
+docker build -t linancn/tiangong-ai-mcp-server-local:0.0.1 .
+
+# 推送 Docker 镜像
+docker push linancn/tiangong-ai-mcp-server-local:0.0.1
 ```

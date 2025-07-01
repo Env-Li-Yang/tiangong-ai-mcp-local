@@ -43,10 +43,20 @@ npm start:server
 npx @modelcontextprotocol/inspector
 ```
 
-### Publishing
+### Publish NPM Package
 
 ```bash
 npm login
 
 npm run build && npm publish
+```
+
+### Push Docker Image
+
+```bash
+# Build MCP server image using Dockerfile
+docker build -t linancn/tiangong-ai-mcp-server-local:0.0.1 .
+
+# Push Docker image
+docker push linancn/tiangong-ai-mcp-server-local:0.0.1
 ```
