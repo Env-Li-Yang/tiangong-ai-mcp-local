@@ -4,7 +4,7 @@ import { regWeaviateTool } from '../tools/weaviate.js';
 
 export function initializeServer(): McpServer {
   const server = new McpServer({
-    name: 'TianGong-MCP-Server',
+    name: 'TianGong-MCP-Server-Local',
     version: '1.0.0',
   });
 

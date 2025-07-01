@@ -6,43 +6,30 @@ TianGong AI Model Context Protocol (MCP) Server supports both STDIO, SSE and Str
 
 ## Starting MCP Server
 
-### Client STDIO Server
+### Streamable Http Server
 
 ```bash
-npm install -g @tiangong-ai/mcp-server
+npm install -g @tiangong-ai/mcp-server-local
 
 npx dotenv -e .env -- \
-npx -p @tiangong-ai/mcp-server tiangong-ai-mcp-stdio
-```
-
-### Remote SSE Server
-
-```bash
-npm install -g @tiangong-ai/mcp-server
-npm install -g supergateway
-
-npx dotenv -e .env -- \
-npx -y supergateway \
-    --stdio "npx -y -p @tiangong-ai/mcp-server tiangong-ai-mcp-stdio" \
-    --port 3001 \
-    --ssePath /sse --messagePath /message
+npx -p @tiangong-ai/mcp-server-local tiangong-ai-mcp-http
 ```
 
 ### Using Docker
 
 ```bash
 # Build MCP server image using Dockerfile (optional)
-docker build -t linancn/tiangong-ai-mcp-server:0.0.13 .
+docker build -t linancn/tiangong-ai-mcp-server-local:0.0.13 .
 
 # Pull MCP server image
-docker pull linancn/tiangong-ai-mcp-server:0.0.13
+docker pull linancn/tiangong-ai-mcp-server-local:0.0.13
 
 # Start MCP server using Docker
 docker run -d \
-    --name tiangong-ai-mcp-server \
+    --name tiangong-ai-mcp-server-local \
     --publish 9279:9279 \
     --env-file .env \
-    linancn/tiangong-ai-mcp-server:0.0.13
+    linancn/tiangong-ai-mcp-server-local:0.0.13
 ```
 
 ## Development
@@ -71,31 +58,16 @@ npm run lint
 
 ### Local Testing
 
-#### STDIO Server
+#### Streamable Http Server
 
 ```bash
-# Launch the STDIO Server using MCP Inspector
-npm start
+# Launch the Streamable Http Server using MCP Inspector
+npm start:server
 ```
 
-#### SSE Server
+#### Launch MCP Inspector
 
 ```bash
-# Build and package the project
-npm run build && npm pack
-
-# Optionally, install supergateway globally
-npm install -g supergateway
-
-# Launch the SSE Server (If the parameter --baseUrl is configured, it should be set to a valid IP address or domain name)
-npx dotenv -e .env -- \
-npx -y supergateway \
-    --stdio "npx -y -p tiangong-ai-mcp-server-0.0.13.tgz tiangong-ai-mcp-stdio" \
-    --port 3001 \
-    --ssePath /sse \
-    --messagePath /message
-
-# Launch MCP Inspector
 npx @modelcontextprotocol/inspector
 ```
 

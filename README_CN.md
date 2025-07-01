@@ -9,40 +9,27 @@ TianGong AI Model Context Protocol (MCP) Server 支持 STDIO 、 SSE（废止）
 ### 客户端 STDIO 服务器
 
 ```bash
-npm install -g @tiangong-ai/mcp-server
+npm install -g @tiangong-ai/mcp-server-local
 
 npx dotenv -e .env -- \
-npx -p @tiangong-ai/mcp-server tiangong-ai-mcp-stdio
-```
-
-### 远程 SSE 服务器
-
-```bash
-npm install -g @tiangong-ai/mcp-server
-npm install -g supergateway
-
-npx dotenv -e .env -- \
-npx -y supergateway \
-    --stdio "npx -y -p @tiangong-ai/mcp-server tiangong-ai-mcp-stdio" \
-    --port 3001 \
-    --ssePath /sse --messagePath /message
+npx -p @tiangong-ai/mcp-server-local tiangong-ai-mcp-http
 ```
 
 ### 使用 Docker
 
 ```bash
 # 使用 Dockerfile 构建 MCP 服务器镜像（可选）
-docker build -t linancn/tiangong-ai-mcp-server:0.0.13 .
+docker build -t linancn/tiangong-ai-mcp-server-local:0.0.13 .
 
 # 拉取 MCP 服务器镜像
-docker pull linancn/tiangong-ai-mcp-server:0.0.13
+docker pull linancn/tiangong-ai-mcp-server-local:0.0.13
 
 # 使用 Docker 启动 MCP 服务器
 docker run -d \
-    --name tiangong-ai-mcp-server \
+    --name tiangong-ai-mcp-server-local \
     --publish 9279:9279 \
     --env-file .env \
-    linancn/tiangong-ai-mcp-server:0.0.13
+    linancn/tiangong-ai-mcp-server-local:0.0.13
 ```
 
 ## 开发
@@ -78,24 +65,9 @@ npm run lint
 npm run start
 ```
 
-#### SSE 服务器
+#### 启动 MCP Inspector
 
 ```bash
-# 打包当前项目
-npm run build && npm pack
-
-# 如果需要可以全局安装 supergateway（可选）
-npm install -g supergateway
-
-# 启动 SSE 服务器，如配置了参数 --baseUrl ，应设置为有效的 IP 地址或域名
-npx dotenv -e .env -- \
-npx -y supergateway \
-    --stdio "npx -y -p tiangong-ai-mcp-server-0.0.13.tgz tiangong-ai-mcp-stdio" \
-    --port 3001 \
-    --ssePath /sse \
-    --messagePath /message
-
-# 启动 MCP Inspector
 npx @modelcontextprotocol/inspector
 ```
 
