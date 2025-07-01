@@ -19,17 +19,17 @@ npx -p @tiangong-ai/mcp-server-local tiangong-ai-mcp-http
 
 ```bash
 # 使用 Dockerfile 构建 MCP 服务器镜像（可选）
-docker build -t linancn/tiangong-ai-mcp-server-local:0.0.13 .
+docker build -t linancn/tiangong-ai-mcp-server-local:0.0.1 .
 
 # 拉取 MCP 服务器镜像
-docker pull linancn/tiangong-ai-mcp-server-local:0.0.13
+docker pull linancn/tiangong-ai-mcp-server-local:0.0.1
 
 # 使用 Docker 启动 MCP 服务器
 docker run -d \
     --name tiangong-ai-mcp-server-local \
     --publish 9279:9279 \
     --env-file .env \
-    linancn/tiangong-ai-mcp-server-local:0.0.13
+    linancn/tiangong-ai-mcp-server-local:0.0.1
 ```
 
 ## 开发

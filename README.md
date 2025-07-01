@@ -19,17 +19,17 @@ npx -p @tiangong-ai/mcp-server-local tiangong-ai-mcp-http
 
 ```bash
 # Build MCP server image using Dockerfile (optional)
-docker build -t linancn/tiangong-ai-mcp-server-local:0.0.13 .
+docker build -t linancn/tiangong-ai-mcp-server-local:0.0.1 .
 
 # Pull MCP server image
-docker pull linancn/tiangong-ai-mcp-server-local:0.0.13
+docker pull linancn/tiangong-ai-mcp-server-local:0.0.1
 
 # Start MCP server using Docker
 docker run -d \
     --name tiangong-ai-mcp-server-local \
     --publish 9279:9279 \
     --env-file .env \
-    linancn/tiangong-ai-mcp-server-local:0.0.13
+    linancn/tiangong-ai-mcp-server-local:0.0.1
 ```
 
 ## Development
