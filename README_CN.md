@@ -40,7 +40,7 @@ docker pull linancn/tiangong-ai-mcp-server:0.0.13
 # 使用 Docker 启动 MCP 服务器
 docker run -d \
     --name tiangong-ai-mcp-server \
-    --publish 9277:9277 \
+    --publish 9279:9279 \
     --env-file .env \
     linancn/tiangong-ai-mcp-server:0.0.13
 ```

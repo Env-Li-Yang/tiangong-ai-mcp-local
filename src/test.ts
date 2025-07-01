@@ -2,7 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 let client: Client | undefined = undefined;
-const url = 'http://localhost:9277/mcp';
+const url = 'http://localhost:9279/mcp';
 const baseUrl = new URL(url);
 try {
   client = new Client({

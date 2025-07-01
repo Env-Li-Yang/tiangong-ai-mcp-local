@@ -1,7 +1,7 @@
 {
   "tiangong_ai": {
     "transport": "streamable_http",
-    "url": "http://host.docker.internal:9277/mcp",
+    "url": "http://host.docker.internal:9279/mcp",
     "headers": {
       "Accept": "application/json, text/event-stream"
     }

@@ -1,4 +1,4 @@
-curl -N -X POST http://localhost:9277/mcp \
+curl -N -X POST http://localhost:9279/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{
@@ -11,7 +11,7 @@ curl -N -X POST http://localhost:9277/mcp \
   }'
 
 ###
-  curl -N -X POST http://192.168.1.108:9277/mcp \
+  curl -N -X POST http://192.168.1.108:9279/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{

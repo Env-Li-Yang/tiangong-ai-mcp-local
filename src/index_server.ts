@@ -107,7 +107,7 @@ app.delete('/mcp', async (req: Request, res: Response) => {
 });
 
 // Start the server
-const PORT = Number(process.env.PORT ?? 9277);
+const PORT = Number(process.env.PORT ?? 9279);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
