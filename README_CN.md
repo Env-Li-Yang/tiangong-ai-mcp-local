@@ -11,8 +11,7 @@ TianGong AI Model Context Protocol (MCP) Local Server 支持 Streamable Http 协
 ```bash
 npm install -g @tiangong-ai/mcp-server-local
 
-npx dotenv -e .env -- \
-npx -p @tiangong-ai/mcp-server-local tiangong-ai-mcp-http
+env $(cat .env | grep -v '^#' | xargs) npx -p @tiangong-ai/mcp-server-local tiangong-ai-mcp-http
 ```
 
 ### 使用 Docker
