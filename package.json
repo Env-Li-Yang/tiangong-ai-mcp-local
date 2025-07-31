@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@types/express": "^5.0.3",
-    "@langchain/langgraph": "^0.3.10",
+    "@langchain/langgraph": "^0.4.1",
     "@modelcontextprotocol/sdk": "^1.17.0",
     "weaviate-client": "^3.8.0",
     "zod": "^3.25.76"
