@@ -23,15 +23,15 @@
   "dependencies": {
     "@types/express": "^5.0.3",
     "@langchain/langgraph": "^0.3.10",
-    "@modelcontextprotocol/sdk": "^1.16.0",
-    "weaviate-client": "^3.7.0",
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "weaviate-client": "^3.8.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@modelcontextprotocol/inspector": "^0.16.1",
+    "@modelcontextprotocol/inspector": "^0.16.2",
     "dotenv-cli": "^8.0.0",
     "prettier": "^3.6.2",
-    "prettier-plugin-organize-imports": "^4.1.0",
+    "prettier-plugin-organize-imports": "^4.2.0",
     "shx": "^0.4.0",
     "typescript": "^5.8.3"
   }
