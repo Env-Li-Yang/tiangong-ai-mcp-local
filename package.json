@@ -1,6 +1,6 @@
 {
   "name": "@tiangong-ai/mcp-server-local",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "TianGong AI MCP Local Server",
   "license": "MIT",
   "author": "Nan LI",
