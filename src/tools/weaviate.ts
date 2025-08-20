@@ -49,43 +49,66 @@ export function regWeaviateTool(server: McpServer) {
       const index = client.collections.get(collection);
       // console.log({ level: "info", data: `Performing hybrid search on collection: ${collection}` });
 
+      // First check if page_number field exists in the collection schema
+      let hasPageNumber = false;
+      try {
+        const schema = await index.config.get();
+        hasPageNumber = schema.properties.some(prop => prop.name === 'page_number');
+      } catch (error) {
+        console.warn('Could not check schema for page_number field:', error);
+        hasPageNumber = false;
+      }
+
+      const returnProperties = ['content', 'source', 'doc_chunk_id'];
+      if (hasPageNumber) {
+        returnProperties.push('page_number');
+      }
+
       const hybridResults = await index.query.hybrid(query, {
         targetVector: 'content',
         queryProperties: ['content'],
-        returnProperties: ['content', 'source', 'doc_chunk_id'],
+        returnProperties,
         returnMetadata: ['score', 'explainScore'],
         limit: topK,
       });
 
       if (extK == 0) {
         return {
-          content: hybridResults.objects.map((obj) => ({
-            type: 'text',
-            text: JSON.stringify(
-              {
-                content: obj.properties.content,
-                source: obj.properties.source || '',
-              },
-              null,
-              2,
-            ),
-          })),
+          content: hybridResults.objects.map((obj) => {
+            const result: any = {
+              content: obj.properties.content,
+              source: obj.properties.source || '',
+            };
+            
+            if (hasPageNumber && obj.properties.page_number !== undefined && obj.properties.page_number !== null) {
+              result.page_number = obj.properties.page_number;
+            }
+            
+            return {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            };
+          }),
         };
       }
 
       const docChunks: Record<string, Array<{ chunkId: number; content: string }>> = {};
       const docSources: Record<string, string> = {};
+      const docPageNumbers: Record<string, number | undefined> = {};
       const addedChunks = new Set<string>();
       const chunksToFetch: string[] = [];
 
       for (const result of hybridResults.objects) {
-        const { content, doc_chunk_id, source } = result.properties;
+        const { content, doc_chunk_id, source, page_number } = result.properties;
         // Ensure doc_chunk_id is a string before splitting
         const docChunkId = String(doc_chunk_id);
         const [docUuid, chunkIdStr] = docChunkId.split('_');
         const chunkId = parseInt(chunkIdStr, 10);
 
         docSources[docUuid] = source ? String(source) : '';
+        if (hasPageNumber && page_number !== undefined && page_number !== null && !docPageNumbers[docUuid]) {
+          docPageNumbers[docUuid] = Number(page_number);
+        }
         if (!docChunks[docUuid]) docChunks[docUuid] = [];
 
         const contentStr = content ? String(content) : '';
@@ -125,13 +148,16 @@ export function regWeaviateTool(server: McpServer) {
 
       fetchedChunks.forEach((obj) => {
         if (obj && obj.properties) {
-          const { content, doc_chunk_id, source } = obj.properties;
+          const { content, doc_chunk_id, source, page_number } = obj.properties;
           const docChunkId = String(doc_chunk_id);
           const [docUuid, chunkIdStr] = docChunkId.split('_');
           const chunkId = parseInt(chunkIdStr, 10);
 
           if (!docChunks[docUuid]) docChunks[docUuid] = [];
           if (!docSources[docUuid]) docSources[docUuid] = source ? String(source) : '';
+          if (hasPageNumber && page_number !== undefined && page_number !== null && !docPageNumbers[docUuid]) {
+            docPageNumbers[docUuid] = Number(page_number);
+          }
 
           const contentStr = content ? String(content) : '';
 
@@ -145,16 +171,22 @@ export function regWeaviateTool(server: McpServer) {
 
       const docsList = Object.entries(docChunks).map(([docUuid, chunks]) => {
         chunks.sort((a, b) => a.chunkId - b.chunkId);
-        return {
+        const result: any = {
           content: chunks.map((c) => c.content).join(''),
           source: docSources[docUuid],
         };
+        
+        if (docPageNumbers[docUuid] !== undefined) {
+          result.page_number = docPageNumbers[docUuid];
+        }
+        
+        return result;
       });
 
       return {
         content: docsList.map((doc) => ({
           type: 'text',
-          text: JSON.stringify({ content: doc.content, source: doc.source }, null, 2),
+          text: JSON.stringify(doc, null, 2),
         })),
       };
     },
