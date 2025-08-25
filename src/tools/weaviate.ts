@@ -91,16 +91,14 @@ Examples: {"path":["tags"],"operator":"ContainsAny","valueText":["foo"]}`),
       const fields = fieldList.join('\n');
 
       // Hybrid search query
-      const whereArg = where ? `where:${toGraphQLInput(where)}` : '';
+      const args: string[] = [];
+      args.push(`hybrid:{query:${JSON.stringify(query)}, properties:["content"]}`);
+      if (where) args.push(`where:${toGraphQLInput(where)}`);
+      args.push(`limit:${topK}`);
+
       const hybridQuery = `{
   Get {
-    ${collection}(
-  hybrid:{query: "${query.replace(/"/g, '\\"')}", properties:["content"]}
-  ${whereArg ? `${whereArg}` : ''}
-      limit: ${topK}
-    ) {
-      ${fields}
-    }
+    ${collection}(${args.join(', ')}) { ${fields} }
   }
 }`;
       const data = await gql(hybridQuery);
@@ -124,8 +122,10 @@ Examples: {"path":["tags"],"operator":"ContainsAny","valueText":["foo"]}`),
       for (const obj of hits) {
         const { content, doc_chunk_id, source, page_number } = obj;
         const docChunkId = String(doc_chunk_id);
-        const [docUuid, chunkIdStr] = docChunkId.split('_');
-        const chunkId = parseInt(chunkIdStr, 10);
+        const idx = docChunkId.lastIndexOf('_');
+        const docUuid = idx >= 0 ? docChunkId.slice(0, idx) : docChunkId;
+        const chunkId = idx >= 0 ? parseInt(docChunkId.slice(idx + 1), 10) : NaN;
+        if (!Number.isFinite(chunkId)) continue; // 防御
         uniqueDocUuids.add(docUuid);
 
         // Determine grouping key
@@ -171,31 +171,10 @@ Examples: {"path":["tags"],"operator":"ContainsAny","valueText":["foo"]}`),
         };
       }
 
-      // Get total chunk count per unique docUuid (to bound neighbor selection)
-      const docTotalCount = new Map<string, number>();
-      for (const docUuid of uniqueDocUuids) {
-        const aggWhere = where
-          ? `operator:And, operands:[{path:["doc_chunk_id"], operator:Like, valueText:"${docUuid}*"}, ${toGraphQLInput(
-              where,
-            )}]`
-          : `path:["doc_chunk_id"], operator:Like, valueText:"${docUuid}*"`;
-        const aggQuery = `{
-  Aggregate {
-    ${collection}(
-      where:{${aggWhere}}
-    ){ meta { count } }
-  }
-}`;
-        const aggData = await gql(aggQuery);
-        const totalChunkCount = aggData?.Aggregate?.[collection]?.[0]?.meta?.count || 0;
-        docTotalCount.set(docUuid, totalChunkCount);
-      }
-
       // For each group, expand neighbors from seed chunks only, within the same document; don't create new groups
       const chunkSpecToGroups = new Map<string, Set<GroupKey>>(); // "docUuid_chunkId" -> groups needing it
 
       for (const [groupKey, group] of groups.entries()) {
-        const total = docTotalCount.get(group.docUuid) ?? 0;
         for (const seedId of group.seedChunkIds) {
           for (let i = 1; i <= extK; i++) {
             const prev = seedId - i;
@@ -205,7 +184,8 @@ Examples: {"path":["tags"],"operator":"ContainsAny","valueText":["foo"]}`),
               if (!chunkSpecToGroups.has(spec)) chunkSpecToGroups.set(spec, new Set());
               chunkSpecToGroups.get(spec)!.add(groupKey);
             }
-            if (next < total && !group.chunks.has(next)) {
+            if (!group.chunks.has(next)) {
+              // 让后续查询决定是否存在
               const spec = `${group.docUuid}_${next}`;
               if (!chunkSpecToGroups.has(spec)) chunkSpecToGroups.set(spec, new Set());
               chunkSpecToGroups.get(spec)!.add(groupKey);
@@ -240,8 +220,9 @@ Examples: {"path":["tags"],"operator":"ContainsAny","valueText":["foo"]}`),
         if (!obj) continue;
         const { content, doc_chunk_id } = obj;
         const docChunkId = String(doc_chunk_id);
-        const [, chunkIdStr] = docChunkId.split('_');
-        const chunkId = parseInt(chunkIdStr, 10);
+        const idx = docChunkId.lastIndexOf('_');
+        const chunkId = idx >= 0 ? parseInt(docChunkId.slice(idx + 1), 10) : NaN;
+        if (!Number.isFinite(chunkId)) continue; // 防御
         const targetGroups = chunkSpecToGroups.get(spec);
         if (!targetGroups) continue;
         for (const gKey of targetGroups) {
