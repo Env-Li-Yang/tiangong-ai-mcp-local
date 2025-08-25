@@ -16,12 +16,10 @@ export function regWeaviateTool(server: McpServer) {
         .describe(
           'The search query or requirements from the user. This is the main input for the hybrid search.',
         ),
-      where: z
-        .any()
-        .optional()
-        .describe(
-          'Optional GraphQL where filter as JSON (Weaviate format). Example: { "path": ["tags"], "operator": "ContainsAny", "valueText": ["foo", "bar"] }',
-        ),
+      where: z.any().optional()
+        .describe(`Optional GraphQL "where" filter as strict JSON (keys quoted). Provide a JSON object in Weaviate format; we convert it to GraphQL for you (operator enum is auto-unquoted).
+- Must be valid JSON, not GraphQL syntax.
+Examples: {"path":["tags"],"operator":"ContainsAny","valueText":["Mandatory"]}`),
       topK: z
         .number()
         .min(0)
