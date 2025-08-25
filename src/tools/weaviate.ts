@@ -74,43 +74,72 @@ export function regWeaviateTool(server: McpServer) {
       const data = await gql(hybridQuery);
       const hits: any[] = data?.Get?.[collection] || [];
 
-      if (extK === 0) {
-        return {
-          content: hits.map((obj: any) => {
-            const result: any = { content: obj.content, source: obj.source || '' };
-            if (hasPageNumber && obj.page_number !== undefined && obj.page_number !== null) {
-              result.page_number = obj.page_number;
-            }
-            return { type: 'text', text: JSON.stringify(result, null, 2) };
-          }),
-        };
+      // Build groups from topK seed hits: group by (docUuid, page) when page_number exists; otherwise by docUuid
+      type GroupKey = string; // docUuid or `${docUuid}@${pageNumber}` when grouping by page
+      interface GroupInfo {
+        docUuid: string;
+        pageNumber?: number; // present only when hasPageNumber and value is known
+        source: string;
+        // collected chunks for this group
+        chunks: Map<number, string>; // chunkId -> content
+        // seed chunk ids (used for extension)
+        seedChunkIds: Set<number>;
       }
 
-      const docChunks: Record<string, Array<{ chunkId: number; content: string }>> = {};
-      const docSources: Record<string, string> = {};
-      const docPageNumbers: Record<string, number | undefined> = {};
-      const addedChunks = new Set<string>();
-      const chunksToFetch: string[] = [];
+      const groups = new Map<GroupKey, GroupInfo>();
+      const uniqueDocUuids = new Set<string>();
 
       for (const obj of hits) {
         const { content, doc_chunk_id, source, page_number } = obj;
         const docChunkId = String(doc_chunk_id);
         const [docUuid, chunkIdStr] = docChunkId.split('_');
         const chunkId = parseInt(chunkIdStr, 10);
-        docSources[docUuid] = source ? String(source) : '';
-        if (
-          hasPageNumber &&
-          page_number !== undefined &&
-          page_number !== null &&
-          !docPageNumbers[docUuid]
-        ) {
-          docPageNumbers[docUuid] = Number(page_number);
-        }
-        if (!docChunks[docUuid]) docChunks[docUuid] = [];
-        docChunks[docUuid].push({ chunkId, content: content ? String(content) : '' });
-        addedChunks.add(`${docUuid}_${chunkId}`);
+        uniqueDocUuids.add(docUuid);
 
-        // Aggregate to get total chunk count for this doc
+        // Determine grouping key
+        let groupKey: GroupKey;
+        let pageNum: number | undefined = undefined;
+        if (hasPageNumber && page_number !== undefined && page_number !== null) {
+          pageNum = Number(page_number);
+          groupKey = `${docUuid}@${pageNum}`;
+        } else {
+          groupKey = docUuid;
+        }
+
+        let group = groups.get(groupKey);
+        if (!group) {
+          group = {
+            docUuid,
+            pageNumber: pageNum,
+            source: source ? String(source) : '',
+            chunks: new Map<number, string>(),
+            seedChunkIds: new Set<number>(),
+          };
+          groups.set(groupKey, group);
+        } else if (!group.source) {
+          group.source = source ? String(source) : '';
+        }
+
+        // Initialize group with seed chunk only
+        group.chunks.set(chunkId, content ? String(content) : '');
+        group.seedChunkIds.add(chunkId);
+      }
+
+      // If no extension requested, aggregate per group and return
+      if (extK === 0) {
+        const results = Array.from(groups.values()).map((g) => {
+          const sortedIds = Array.from(g.chunks.keys()).sort((a, b) => a - b);
+          const mergedContent = sortedIds.map((id) => g.chunks.get(id) || '').join('');
+          const result: any = { content: mergedContent, source: g.source };
+          if (g.pageNumber !== undefined) result.page_number = g.pageNumber;
+          return result;
+        });
+        return { content: results.map((r) => ({ type: 'text', text: JSON.stringify(r, null, 2) })) };
+      }
+
+      // Get total chunk count per unique docUuid (to bound neighbor selection)
+      const docTotalCount = new Map<string, number>();
+      for (const docUuid of uniqueDocUuids) {
         const aggQuery = `{
   Aggregate {
     ${collection}(
@@ -120,68 +149,76 @@ export function regWeaviateTool(server: McpServer) {
 }`;
         const aggData = await gql(aggQuery);
         const totalChunkCount = aggData?.Aggregate?.[collection]?.[0]?.meta?.count || 0;
+        docTotalCount.set(docUuid, totalChunkCount);
+      }
 
-        for (let i = 1; i <= extK; i++) {
-          const prev = chunkId - i;
-          if (prev >= 0 && !addedChunks.has(`${docUuid}_${prev}`)) {
-            chunksToFetch.push(`${docUuid}_${prev}`);
-            addedChunks.add(`${docUuid}_${prev}`);
-          }
-          const next = chunkId + i;
-          if (next < totalChunkCount && !addedChunks.has(`${docUuid}_${next}`)) {
-            chunksToFetch.push(`${docUuid}_${next}`);
-            addedChunks.add(`${docUuid}_${next}`);
+      // For each group, expand neighbors from seed chunks only, within the same document; don't create new groups
+      const chunkSpecToGroups = new Map<string, Set<GroupKey>>(); // "docUuid_chunkId" -> groups needing it
+
+      for (const [groupKey, group] of groups.entries()) {
+        const total = docTotalCount.get(group.docUuid) ?? 0;
+        for (const seedId of group.seedChunkIds) {
+          for (let i = 1; i <= extK; i++) {
+            const prev = seedId - i;
+            const next = seedId + i;
+            if (prev >= 0 && !group.chunks.has(prev)) {
+              const spec = `${group.docUuid}_${prev}`;
+              if (!chunkSpecToGroups.has(spec)) chunkSpecToGroups.set(spec, new Set());
+              chunkSpecToGroups.get(spec)!.add(groupKey);
+            }
+            if (next < total && !group.chunks.has(next)) {
+              const spec = `${group.docUuid}_${next}`;
+              if (!chunkSpecToGroups.has(spec)) chunkSpecToGroups.set(spec, new Set());
+              chunkSpecToGroups.get(spec)!.add(groupKey);
+            }
           }
         }
       }
 
-      // Fetch neighboring chunks
-      const fetchPromises = chunksToFetch.map(async (chunkId) => {
+      // Fetch all required neighbor chunks (deduplicated globally), then assign to requesting groups
+      const chunkSpecs = Array.from(chunkSpecToGroups.keys());
+      const fetchPromises = chunkSpecs.map(async (spec) => {
         const fetchQuery = `{
   Get {
     ${collection}(
-      where:{path:["doc_chunk_id"], operator:Equal, valueText:"${chunkId}"}
+      where:{path:["doc_chunk_id"], operator:Equal, valueText:"${spec}"}
       limit:1
     ) { ${fields} }
   }
 }`;
         const fd = await gql(fetchQuery);
-        return (fd?.Get?.[collection] || [])[0];
+        const obj = (fd?.Get?.[collection] || [])[0];
+        return { spec, obj } as { spec: string; obj: any };
       });
       const fetched = await Promise.all(fetchPromises);
 
-      fetched.forEach((obj) => {
-        if (!obj) return;
-        const { content, doc_chunk_id, source, page_number } = obj;
+      for (const { spec, obj } of fetched) {
+        if (!obj) continue;
+        const { content, doc_chunk_id } = obj;
         const docChunkId = String(doc_chunk_id);
-        const [docUuid, chunkIdStr] = docChunkId.split('_');
+        const [, chunkIdStr] = docChunkId.split('_');
         const chunkId = parseInt(chunkIdStr, 10);
-        if (!docChunks[docUuid]) docChunks[docUuid] = [];
-        if (!docSources[docUuid]) docSources[docUuid] = source ? String(source) : '';
-        if (
-          hasPageNumber &&
-          page_number !== undefined &&
-          page_number !== null &&
-          !docPageNumbers[docUuid]
-        ) {
-          docPageNumbers[docUuid] = Number(page_number);
+        const targetGroups = chunkSpecToGroups.get(spec);
+        if (!targetGroups) continue;
+        for (const gKey of targetGroups) {
+          const g = groups.get(gKey);
+          if (!g) continue;
+          if (!g.chunks.has(chunkId)) {
+            g.chunks.set(chunkId, content ? String(content) : '');
+          }
         }
-        if (!docChunks[docUuid].some((c) => c.chunkId === chunkId)) {
-          docChunks[docUuid].push({ chunkId, content: content ? String(content) : '' });
-        }
-      });
+      }
 
-      const docs = Object.entries(docChunks).map(([docUuid, chunks]) => {
-        chunks.sort((a, b) => a.chunkId - b.chunkId);
-        const result: any = {
-          content: chunks.map((c) => c.content).join(''),
-          source: docSources[docUuid],
-        };
-        if (docPageNumbers[docUuid] !== undefined) result.page_number = docPageNumbers[docUuid];
+      // Aggregate per group: sort by chunkId and merge content; include page_number when available
+      const results = Array.from(groups.values()).map((g) => {
+        const sortedIds = Array.from(g.chunks.keys()).sort((a, b) => a - b);
+        const mergedContent = sortedIds.map((id) => g.chunks.get(id) || '').join('');
+        const result: any = { content: mergedContent, source: g.source };
+        if (g.pageNumber !== undefined) result.page_number = g.pageNumber;
         return result;
       });
 
-      return { content: docs.map((d) => ({ type: 'text', text: JSON.stringify(d, null, 2) })) };
+      return { content: results.map((r) => ({ type: 'text', text: JSON.stringify(r, null, 2) })) };
     },
   );
 }
