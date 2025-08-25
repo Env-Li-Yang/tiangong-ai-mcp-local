@@ -50,7 +50,7 @@ export function regWeaviateTool(server: McpServer) {
         const schemaRes = await fetch(`http://localhost:8080/v1/schema/${collection}`);
         if (schemaRes.ok) {
           const cls: any = await schemaRes.json();
-            hasPageNumber = (cls?.properties || []).some((p: any) => p.name === 'page_number');
+          hasPageNumber = (cls?.properties || []).some((p: any) => p.name === 'page_number');
         }
       } catch {
         hasPageNumber = false;
@@ -98,7 +98,12 @@ export function regWeaviateTool(server: McpServer) {
         const [docUuid, chunkIdStr] = docChunkId.split('_');
         const chunkId = parseInt(chunkIdStr, 10);
         docSources[docUuid] = source ? String(source) : '';
-        if (hasPageNumber && page_number !== undefined && page_number !== null && !docPageNumbers[docUuid]) {
+        if (
+          hasPageNumber &&
+          page_number !== undefined &&
+          page_number !== null &&
+          !docPageNumbers[docUuid]
+        ) {
           docPageNumbers[docUuid] = Number(page_number);
         }
         if (!docChunks[docUuid]) docChunks[docUuid] = [];
@@ -153,7 +158,12 @@ export function regWeaviateTool(server: McpServer) {
         const chunkId = parseInt(chunkIdStr, 10);
         if (!docChunks[docUuid]) docChunks[docUuid] = [];
         if (!docSources[docUuid]) docSources[docUuid] = source ? String(source) : '';
-        if (hasPageNumber && page_number !== undefined && page_number !== null && !docPageNumbers[docUuid]) {
+        if (
+          hasPageNumber &&
+          page_number !== undefined &&
+          page_number !== null &&
+          !docPageNumbers[docUuid]
+        ) {
           docPageNumbers[docUuid] = Number(page_number);
         }
         if (!docChunks[docUuid].some((c) => c.chunkId === chunkId)) {
@@ -163,7 +173,10 @@ export function regWeaviateTool(server: McpServer) {
 
       const docs = Object.entries(docChunks).map(([docUuid, chunks]) => {
         chunks.sort((a, b) => a.chunkId - b.chunkId);
-        const result: any = { content: chunks.map((c) => c.content).join(''), source: docSources[docUuid] };
+        const result: any = {
+          content: chunks.map((c) => c.content).join(''),
+          source: docSources[docUuid],
+        };
         if (docPageNumbers[docUuid] !== undefined) result.page_number = docPageNumbers[docUuid];
         return result;
       });
