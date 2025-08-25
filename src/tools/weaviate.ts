@@ -19,7 +19,7 @@ export function regWeaviateTool(server: McpServer) {
       where: z.any().optional()
         .describe(`Optional GraphQL "where" filter as strict JSON (keys quoted). Provide a JSON object in Weaviate format; we convert it to GraphQL for you (operator enum is auto-unquoted).
 - Must be valid JSON, not GraphQL syntax.
-Examples: {"path":["tags"],"operator":"ContainsAny","valueText":["Mandatory"]}`),
+Examples: {"path":["tags"],"operator":"ContainsAny","valueText":["foo"]}`),
       topK: z
         .number()
         .min(0)
