@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { regElleAgent } from '../agents/elle.js';
+// import { regElleAgent } from '../agents/elle.js';
 import { regWeaviateTool } from '../tools/weaviate.js';
 
 export function initializeServer(): McpServer {
@@ -9,7 +9,7 @@ export function initializeServer(): McpServer {
   });
 
   regWeaviateTool(server);
-  regElleAgent(server);
+  // regElleAgent(server);
 
   return server;
 }
