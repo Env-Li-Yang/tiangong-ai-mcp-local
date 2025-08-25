@@ -25,8 +25,8 @@
   "dependencies": {
     "@types/express": "^5.0.3",
     "@langchain/langgraph": "^0.4.6",
-    "@modelcontextprotocol/sdk": "^1.17.3",
-    "weaviate-client": "^3.8.0",
+    "@modelcontextprotocol/sdk": "^1.17.4",
+    "weaviate-client": "^3.8.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
