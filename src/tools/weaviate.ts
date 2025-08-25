@@ -16,6 +16,12 @@ export function regWeaviateTool(server: McpServer) {
         .describe(
           'The search query or requirements from the user. This is the main input for the hybrid search.',
         ),
+      where: z
+        .any()
+        .optional()
+        .describe(
+          'Optional GraphQL where filter as JSON (Weaviate format). Example: { "path": ["tags"], "operator": "ContainsAny", "valueText": ["foo", "bar"] }',
+        ),
       topK: z
         .number()
         .min(0)
@@ -31,7 +37,7 @@ export function regWeaviateTool(server: McpServer) {
           'The number of additional chunks to include before and after each topK result. This allows for context extension around the top results, providing more comprehensive information. Default is 0.',
         ),
     },
-    async ({ collection, query, topK, extK }) => {
+    async ({ collection, query, where, topK, extK }) => {
       // Helper for GraphQL requests
       const gql = async (q: string) => {
         const res = await fetch('http://localhost:8080/v1/graphql', {
@@ -42,6 +48,32 @@ export function regWeaviateTool(server: McpServer) {
         const json: any = await res.json();
         if (json.errors) throw new Error(JSON.stringify(json.errors));
         return json.data;
+      };
+
+      // Serialize plain JSON into GraphQL input string
+      const toGraphQLInput = (v: any): string => {
+        const isEnumLike = (s: string) => /^[A-Z][A-Za-z0-9_]*$/.test(s);
+        if (v === null) return 'null';
+        const t = typeof v;
+        if (t === 'string') return JSON.stringify(v);
+        if (t === 'number' || t === 'boolean') return String(v);
+        if (Array.isArray(v)) return `[${v.map((x) => toGraphQLInput(x)).join(', ')}]`;
+        if (t === 'object') {
+          return (
+            '{' +
+            Object.entries(v)
+              .map(([k, val]) => {
+                if (k === 'operator' && typeof val === 'string' && isEnumLike(val)) {
+                  return `${k}: ${val}`; // GraphQL enum (unquoted)
+                }
+                return `${k}: ${toGraphQLInput(val)}`;
+              })
+              .join(', ') +
+            '}'
+          );
+        }
+        // Fallback
+        return JSON.stringify(v);
       };
 
       // Detect page_number field
@@ -61,10 +93,12 @@ export function regWeaviateTool(server: McpServer) {
       const fields = fieldList.join('\n');
 
       // Hybrid search query
+      const whereArg = where ? `where:${toGraphQLInput(where)}` : '';
       const hybridQuery = `{
   Get {
     ${collection}(
-      hybrid:{query: "${query.replace(/"/g, '\\"')}", properties:["content"]}
+  hybrid:{query: "${query.replace(/"/g, '\\"')}", properties:["content"]}
+  ${whereArg ? `${whereArg}` : ''}
       limit: ${topK}
     ) {
       ${fields}
@@ -134,16 +168,23 @@ export function regWeaviateTool(server: McpServer) {
           if (g.pageNumber !== undefined) result.page_number = g.pageNumber;
           return result;
         });
-        return { content: results.map((r) => ({ type: 'text', text: JSON.stringify(r, null, 2) })) };
+        return {
+          content: results.map((r) => ({ type: 'text', text: JSON.stringify(r, null, 2) })),
+        };
       }
 
       // Get total chunk count per unique docUuid (to bound neighbor selection)
       const docTotalCount = new Map<string, number>();
       for (const docUuid of uniqueDocUuids) {
+        const aggWhere = where
+          ? `operator:And, operands:[{path:["doc_chunk_id"], operator:Like, valueText:"${docUuid}*"}, ${toGraphQLInput(
+              where,
+            )}]`
+          : `path:["doc_chunk_id"], operator:Like, valueText:"${docUuid}*"`;
         const aggQuery = `{
   Aggregate {
     ${collection}(
-      where:{path:["doc_chunk_id"], operator:Like, valueText:"${docUuid}*"}
+      where:{${aggWhere}}
     ){ meta { count } }
   }
 }`;
@@ -178,10 +219,15 @@ export function regWeaviateTool(server: McpServer) {
       // Fetch all required neighbor chunks (deduplicated globally), then assign to requesting groups
       const chunkSpecs = Array.from(chunkSpecToGroups.keys());
       const fetchPromises = chunkSpecs.map(async (spec) => {
+        const chunkWhere = where
+          ? `operator:And, operands:[{path:["doc_chunk_id"], operator:Equal, valueText:"${spec}"}, ${toGraphQLInput(
+              where,
+            )}]`
+          : `path:["doc_chunk_id"], operator:Equal, valueText:"${spec}"`;
         const fetchQuery = `{
   Get {
     ${collection}(
-      where:{path:["doc_chunk_id"], operator:Equal, valueText:"${spec}"}
+      where:{${chunkWhere}}
       limit:1
     ) { ${fields} }
   }
