@@ -1,5 +1,4 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import weaviate from 'weaviate-client';
 import { z } from 'zod';
 
 export function regWeaviateTool(server: McpServer) {
@@ -32,62 +31,57 @@ export function regWeaviateTool(server: McpServer) {
           'The number of additional chunks to include before and after each topK result. This allows for context extension around the top results, providing more comprehensive information. Default is 0.',
         ),
     },
-    async ({ collection, query, topK, extK }, extra) => {
-      const client = await weaviate.connectToCustom({
-        httpHost: 'localhost',
-        httpPort: 8080,
-        grpcHost: 'localhost',
-        grpcPort: 50051,
-        // grpcSecure: true,
-        // httpSecure: true,
-        // authCredentials: new weaviate.ApiKey('WEAVIATE_INSTANCE_API_KEY'),
-        // headers: {
-        //   'X-Cohere-Api-Key': Deno.env.get('COHERE_API_KEY') ?? ''
-        // }
-      });
+    async ({ collection, query, topK, extK }) => {
+      // Helper for GraphQL requests
+      const gql = async (q: string) => {
+        const res = await fetch('http://localhost:8080/v1/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q }),
+        });
+        const json: any = await res.json();
+        if (json.errors) throw new Error(JSON.stringify(json.errors));
+        return json.data;
+      };
 
-      const index = client.collections.get(collection);
-      // console.log({ level: "info", data: `Performing hybrid search on collection: ${collection}` });
-
-      // First check if page_number field exists in the collection schema
+      // Detect page_number field
       let hasPageNumber = false;
       try {
-        const schema = await index.config.get();
-        hasPageNumber = schema.properties.some(prop => prop.name === 'page_number');
-      } catch (error) {
-        console.warn('Could not check schema for page_number field:', error);
+        const schemaRes = await fetch(`http://localhost:8080/v1/schema/${collection}`);
+        if (schemaRes.ok) {
+          const cls: any = await schemaRes.json();
+            hasPageNumber = (cls?.properties || []).some((p: any) => p.name === 'page_number');
+        }
+      } catch {
         hasPageNumber = false;
       }
 
-      const returnProperties = ['content', 'source', 'doc_chunk_id'];
-      if (hasPageNumber) {
-        returnProperties.push('page_number');
-      }
+      const fieldList = ['content', 'source', 'doc_chunk_id'];
+      if (hasPageNumber) fieldList.push('page_number');
+      const fields = fieldList.join('\n');
 
-      const hybridResults = await index.query.hybrid(query, {
-        targetVector: 'content',
-        queryProperties: ['content'],
-        returnProperties,
-        returnMetadata: ['score', 'explainScore'],
-        limit: topK,
-      });
+      // Hybrid search query
+      const hybridQuery = `{
+  Get {
+    ${collection}(
+      hybrid:{query: "${query.replace(/"/g, '\\"')}", properties:["content"]}
+      limit: ${topK}
+    ) {
+      ${fields}
+    }
+  }
+}`;
+      const data = await gql(hybridQuery);
+      const hits: any[] = data?.Get?.[collection] || [];
 
-      if (extK == 0) {
+      if (extK === 0) {
         return {
-          content: hybridResults.objects.map((obj) => {
-            const result: any = {
-              content: obj.properties.content,
-              source: obj.properties.source || '',
-            };
-            
-            if (hasPageNumber && obj.properties.page_number !== undefined && obj.properties.page_number !== null) {
-              result.page_number = obj.properties.page_number;
+          content: hits.map((obj: any) => {
+            const result: any = { content: obj.content, source: obj.source || '' };
+            if (hasPageNumber && obj.page_number !== undefined && obj.page_number !== null) {
+              result.page_number = obj.page_number;
             }
-            
-            return {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            };
+            return { type: 'text', text: JSON.stringify(result, null, 2) };
           }),
         };
       }
@@ -98,97 +92,83 @@ export function regWeaviateTool(server: McpServer) {
       const addedChunks = new Set<string>();
       const chunksToFetch: string[] = [];
 
-      for (const result of hybridResults.objects) {
-        const { content, doc_chunk_id, source, page_number } = result.properties;
-        // Ensure doc_chunk_id is a string before splitting
+      for (const obj of hits) {
+        const { content, doc_chunk_id, source, page_number } = obj;
         const docChunkId = String(doc_chunk_id);
         const [docUuid, chunkIdStr] = docChunkId.split('_');
         const chunkId = parseInt(chunkIdStr, 10);
-
         docSources[docUuid] = source ? String(source) : '';
         if (hasPageNumber && page_number !== undefined && page_number !== null && !docPageNumbers[docUuid]) {
           docPageNumbers[docUuid] = Number(page_number);
         }
         if (!docChunks[docUuid]) docChunks[docUuid] = [];
-
-        const contentStr = content ? String(content) : '';
-        docChunks[docUuid].push({ chunkId, content: contentStr });
+        docChunks[docUuid].push({ chunkId, content: content ? String(content) : '' });
         addedChunks.add(`${docUuid}_${chunkId}`);
 
-        const index = client.collections.get(collection);
-        const aggregateResult = await index.aggregate.overAll({
-          filters: index.filter.byProperty('doc_chunk_id').like(`${docUuid}*`),
-        });
-
-        const totalChunkCount = aggregateResult.totalCount || 0; // Total number of chunks for this document
+        // Aggregate to get total chunk count for this doc
+        const aggQuery = `{
+  Aggregate {
+    ${collection}(
+      where:{path:["doc_chunk_id"], operator:Like, valueText:"${docUuid}*"}
+    ){ meta { count } }
+  }
+}`;
+        const aggData = await gql(aggQuery);
+        const totalChunkCount = aggData?.Aggregate?.[collection]?.[0]?.meta?.count || 0;
 
         for (let i = 1; i <= extK; i++) {
-          const prevChunk = chunkId - i;
-          if (prevChunk >= 0 && !addedChunks.has(`${docUuid}_${prevChunk}`)) {
-            chunksToFetch.push(`${docUuid}_${prevChunk}`);
-            addedChunks.add(`${docUuid}_${prevChunk}`);
+          const prev = chunkId - i;
+          if (prev >= 0 && !addedChunks.has(`${docUuid}_${prev}`)) {
+            chunksToFetch.push(`${docUuid}_${prev}`);
+            addedChunks.add(`${docUuid}_${prev}`);
           }
-
-          const nextChunk = chunkId + i;
-          if (nextChunk < totalChunkCount && !addedChunks.has(`${docUuid}_${nextChunk}`)) {
-            chunksToFetch.push(`${docUuid}_${nextChunk}`);
-            addedChunks.add(`${docUuid}_${nextChunk}`);
+          const next = chunkId + i;
+          if (next < totalChunkCount && !addedChunks.has(`${docUuid}_${next}`)) {
+            chunksToFetch.push(`${docUuid}_${next}`);
+            addedChunks.add(`${docUuid}_${next}`);
           }
         }
       }
 
-      const fetchedChunks = await Promise.all(
-        chunksToFetch.map(async (chunkId) => {
-          const fetchResult = await index.query.fetchObjects({
-            filters: index.filter.byProperty('doc_chunk_id').equal(chunkId),
-          });
-          return fetchResult.objects[0];
-        }),
-      );
+      // Fetch neighboring chunks
+      const fetchPromises = chunksToFetch.map(async (chunkId) => {
+        const fetchQuery = `{
+  Get {
+    ${collection}(
+      where:{path:["doc_chunk_id"], operator:Equal, valueText:"${chunkId}"}
+      limit:1
+    ) { ${fields} }
+  }
+}`;
+        const fd = await gql(fetchQuery);
+        return (fd?.Get?.[collection] || [])[0];
+      });
+      const fetched = await Promise.all(fetchPromises);
 
-      fetchedChunks.forEach((obj) => {
-        if (obj && obj.properties) {
-          const { content, doc_chunk_id, source, page_number } = obj.properties;
-          const docChunkId = String(doc_chunk_id);
-          const [docUuid, chunkIdStr] = docChunkId.split('_');
-          const chunkId = parseInt(chunkIdStr, 10);
-
-          if (!docChunks[docUuid]) docChunks[docUuid] = [];
-          if (!docSources[docUuid]) docSources[docUuid] = source ? String(source) : '';
-          if (hasPageNumber && page_number !== undefined && page_number !== null && !docPageNumbers[docUuid]) {
-            docPageNumbers[docUuid] = Number(page_number);
-          }
-
-          const contentStr = content ? String(content) : '';
-
-          if (!docChunks[docUuid].some((c) => c.chunkId === chunkId)) {
-            docChunks[docUuid].push({ chunkId, content: contentStr });
-          }
-        } else {
-          console.error('Invalid fetched chunk:', obj);
+      fetched.forEach((obj) => {
+        if (!obj) return;
+        const { content, doc_chunk_id, source, page_number } = obj;
+        const docChunkId = String(doc_chunk_id);
+        const [docUuid, chunkIdStr] = docChunkId.split('_');
+        const chunkId = parseInt(chunkIdStr, 10);
+        if (!docChunks[docUuid]) docChunks[docUuid] = [];
+        if (!docSources[docUuid]) docSources[docUuid] = source ? String(source) : '';
+        if (hasPageNumber && page_number !== undefined && page_number !== null && !docPageNumbers[docUuid]) {
+          docPageNumbers[docUuid] = Number(page_number);
+        }
+        if (!docChunks[docUuid].some((c) => c.chunkId === chunkId)) {
+          docChunks[docUuid].push({ chunkId, content: content ? String(content) : '' });
         }
       });
 
-      const docsList = Object.entries(docChunks).map(([docUuid, chunks]) => {
+      const docs = Object.entries(docChunks).map(([docUuid, chunks]) => {
         chunks.sort((a, b) => a.chunkId - b.chunkId);
-        const result: any = {
-          content: chunks.map((c) => c.content).join(''),
-          source: docSources[docUuid],
-        };
-        
-        if (docPageNumbers[docUuid] !== undefined) {
-          result.page_number = docPageNumbers[docUuid];
-        }
-        
+        const result: any = { content: chunks.map((c) => c.content).join(''), source: docSources[docUuid] };
+        if (docPageNumbers[docUuid] !== undefined) result.page_number = docPageNumbers[docUuid];
         return result;
       });
 
-      return {
-        content: docsList.map((doc) => ({
-          type: 'text',
-          text: JSON.stringify(doc, null, 2),
-        })),
-      };
+      return { content: docs.map((d) => ({ type: 'text', text: JSON.stringify(d, null, 2) })) };
     },
   );
 }
