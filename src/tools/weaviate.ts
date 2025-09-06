@@ -196,40 +196,52 @@ Examples: {"path":["tags"],"operator":"ContainsAny","valueText":["foo","bar"]}`)
 
       // Fetch all required neighbor chunks (deduplicated globally), then assign to requesting groups
       const chunkSpecs = Array.from(chunkSpecToGroups.keys());
-      const fetchPromises = chunkSpecs.map(async (spec) => {
-        const chunkWhere = where
-          ? `operator:And, operands:[{path:["doc_chunk_id"], operator:Equal, valueText:"${spec}"}, ${toGraphQLInput(
-              where,
-            )}]`
-          : `path:["doc_chunk_id"], operator:Equal, valueText:"${spec}"`;
-        const fetchQuery = `{
+      if (chunkSpecs.length > 0) {
+        // Only fetch fields required for neighbor assignment
+        const neighborFields = ['content', 'doc_chunk_id'].join('\n');
+        // Batch size to avoid overly large GraphQL payloads
+        const BATCH_SIZE = 256;
+
+        for (let start = 0; start < chunkSpecs.length; start += BATCH_SIZE) {
+          const specs = chunkSpecs.slice(start, start + BATCH_SIZE);
+
+          const orOperands = specs
+            .map((spec) => `{path:["doc_chunk_id"], operator:Equal, valueText:"${spec}"}`)
+            .join(', ');
+
+          const chunkWhere = where
+            ? `operator:And, operands:[{operator:Or, operands:[${orOperands}]}, ${toGraphQLInput(
+                where,
+              )}]`
+            : `operator:Or, operands:[${orOperands}]`;
+
+          const fetchQuery = `{
   Get {
     ${collection}(
       where:{${chunkWhere}}
-      limit:1
-    ) { ${fields} }
+      limit:${specs.length}
+    ) { ${neighborFields} }
   }
 }`;
-        const fd = await gql(fetchQuery);
-        const obj = (fd?.Get?.[collection] || [])[0];
-        return { spec, obj } as { spec: string; obj: any };
-      });
-      const fetched = await Promise.all(fetchPromises);
-
-      for (const { spec, obj } of fetched) {
-        if (!obj) continue;
-        const { content, doc_chunk_id } = obj;
-        const docChunkId = String(doc_chunk_id);
-        const idx = docChunkId.lastIndexOf('_');
-        const chunkId = idx >= 0 ? parseInt(docChunkId.slice(idx + 1), 10) : NaN;
-        if (!Number.isFinite(chunkId)) continue; // 防御
-        const targetGroups = chunkSpecToGroups.get(spec);
-        if (!targetGroups) continue;
-        for (const gKey of targetGroups) {
-          const g = groups.get(gKey);
-          if (!g) continue;
-          if (!g.chunks.has(chunkId)) {
-            g.chunks.set(chunkId, content ? String(content) : '');
+          const fd = await gql(fetchQuery);
+          const objs: any[] = fd?.Get?.[collection] || [];
+          for (const obj of objs) {
+            if (!obj) continue;
+            const { content, doc_chunk_id } = obj;
+            const docChunkId = String(doc_chunk_id);
+            const idx = docChunkId.lastIndexOf('_');
+            const chunkId = idx >= 0 ? parseInt(docChunkId.slice(idx + 1), 10) : NaN;
+            if (!Number.isFinite(chunkId)) continue; // 防御
+            const spec = docChunkId; // same format as we generated earlier
+            const targetGroups = chunkSpecToGroups.get(spec);
+            if (!targetGroups) continue;
+            for (const gKey of targetGroups) {
+              const g = groups.get(gKey);
+              if (!g) continue;
+              if (!g.chunks.has(chunkId)) {
+                g.chunks.set(chunkId, content ? String(content) : '');
+              }
+            }
           }
         }
       }
